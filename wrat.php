@@ -46,7 +46,6 @@ if (!class_exists("\WRAT\WRAT")) {
             register_deactivation_hook(__FILE__,                [$this, 'wrat_deactivate_plugin']);
 
             # custom construct method       
-            add_action('plugins_loaded',                        [$this, 'after_wat_loaded']);
             add_action('rest_api_init',                         [$this, 'wat_rest_init'], 0);
             add_action('rest_api_init',                         [$this, 'register_wrat_rests']);
             add_action('wrat_after_registration',                [$this, 'wrat_after_registration'], 0);
@@ -64,7 +63,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $sql = "CREATE TABLE $table_name (
                 id mediumint(9) NOT NULL AUTO_INCREMENT,
                 user_id mediumint(9) NOT NULL,
-                token varchar(250) NOT NULL,
+                token varchar(250) DEFAULT NULL,
                 created datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 validity datetime DEFAULT NULL,
                 PRIMARY KEY (id)
@@ -96,7 +95,7 @@ if (!class_exists("\WRAT\WRAT")) {
                 'reset_email_sent' => 'Password Recovery Email Sent',
                 'user_registered' => 'User Registered Successfully',
                 'valid_web_auth_token' => 'Valid Web Auth Token',
-                'invalid_web_auth_token' => 'Invalid Web Auth Token',
+                'invalid_wrat' => 'Invalid Web Auth Token',
                 'logged_in' => 'Logged In',
                 'password_changed' => 'Password changed successfully',
             ];
@@ -143,7 +142,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $token = false;
             $headers = $_SERVER["HTTP_AUTHORIZATION"] ?? false;
             if ($headers) {
-                preg_match("/WRAT\s+[^\s]+/im", $headers, $match);
+                preg_match("/WRAT.[^\s]+/im", $headers, $match);
                 if ($match && !empty($match) && count($match) > 0) {
                     $token = trim(str_replace('WRAT ', '', $match[0]));
                 }
@@ -159,32 +158,33 @@ if (!class_exists("\WRAT\WRAT")) {
         {
             if (is_user_logged_in()) {
                 $user = $this->wrat_getUserFromObject(wp_get_current_user());
-                unset($user->capabilities);
-
-                return new WP_REST_Response($this->success('valid_rat', $user));
+                return new WP_REST_Response($this->success('valid_wrat', $user));
             }
-            return new WP_REST_Response($this->success('invalid_rat'));
+            return new WP_REST_Response($this->error('invalid_wrat'));
         }
 
         function deleteWRAT($token = false)
         {
             // delete existing token
-            global $wpdb;
             if (!$token) $token = $this->getWRAT();
             if ($token) {
-                $delete = $wpdb->query($wpdb->prepare("DELETE FROM $table_name WHERE token = '%s'", $token));
+                global $wpdb;
+                $table_name = $wpdb->prefix . $this->table;
+                $delete = $wpdb->query("DELETE FROM $table_name WHERE `token` = '{$token}';");
                 return $delete;
             }
             return false;
         }
 
-        function updateWRAT($user_id)
+        function updateWRAT($user_id = false)
         {
+            if (!$user_id) $user_id = get_current_user_id();
+            if (!$user_id) return false;
 
             global $wpdb;
             $table_name = $wpdb->prefix . $this->table;
 
-            $this->deleteWRAT($user_id);
+            $this->deleteWRAT();
 
             // create new token for the user 
             $token =  $this->create_wrat_token();
@@ -215,9 +215,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $output->last_name = get_user_meta($data->data->ID, 'last_name', true);
             $output->email = $data->data->user_email;
             $output->role = $data->roles[0];
-
-            $profile_picture = get_user_meta($data->data->ID, '_wrat_picture', true);
-            $output->picture = $profile_picture;
+            $output->picture = get_user_meta($data->data->ID, '_wrat_picture', true);
             return $output;
         }
 
@@ -265,12 +263,8 @@ if (!class_exists("\WRAT\WRAT")) {
 
         function wrat_loginUser($user)
         {
-            # logged in 
-            // if(!$user) return false;
-
             $token = $this->updateWRAT($user->data->ID);
             $user = $this->wrat_getUserFromObject($user);
-            unset($user->capabilities);
             $user->token = $token;
 
             # after wat auth hook 
@@ -285,31 +279,32 @@ if (!class_exists("\WRAT\WRAT")) {
             if ($token) {
                 global $wpdb;
                 $table_name = $wpdb->prefix . $this->table;
-                $token = $wpdb->get_results($wpdb->prepare("SELECT user_id, validity FROM $table_name WHERE token = '$token' LIMIT 1"));
+                $tokenFromDB = $wpdb->get_results($wpdb->prepare("SELECT user_id, validity FROM $table_name WHERE token = '$token' LIMIT 1"));
 
-                if ($token && !empty($token)) {
-                    $token = $token[0];
-                    if (strtotime($token->validity) < time()) {
-                        wp_send_json($this->error('token_expired'));
+                if ($tokenFromDB && !empty($tokenFromDB)) {
+                    $tokenFromDB = $tokenFromDB[0];
+                    if (strtotime($tokenFromDB->validity) > time()) {
+                        wp_set_current_user($tokenFromDB->user_id);
+                    } else {
+                        $this->deleteWRAT($token);
                     }
-                    wp_set_current_user($token->user_id);
                 }
             }
 
             // validate_wrat_endpoints
-            $this->validate_wrat_endpoints();
+            if ($this->isWRATRestrictedRoute()) wp_send_json($this->error('invalid_wrat'));
         }
 
-        function validate_wrat_endpoints()
+        function isWRATRestrictedRoute()
         {
 
             $parsed_url = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
             $parsed_url = explode('?', $parsed_url)[0];
             $requested_url = trim(str_replace(home_url(), '', $parsed_url), '/');
             $wrat_default_endpoints = [
-                '/wp-json/wat/v1/password/change',
-                '/wp-json/wat/v1/refresh',
-                '/wp-json/wat/v1/auth/test',
+                '/wp-json/wrat/password/change',
+                '/wp-json/wrat/refresh',
+                '/wp-json/wrat/auth/test',
             ];
 
             $wrat_endpoints = apply_filters('wrat_endpoints',  $wrat_default_endpoints);
@@ -326,9 +321,7 @@ if (!class_exists("\WRAT\WRAT")) {
                 }
             }
 
-            if ($checkAuth && !is_user_logged_in()) {
-                $this->error('INVALID_WEB_AUTH_TOKEN');
-            }
+            return $checkAuth && !is_user_logged_in();
         }
 
 
@@ -338,6 +331,8 @@ if (!class_exists("\WRAT\WRAT")) {
 
             $routes = [
 
+                ['register',                ['POST'],       'wrat_register'],
+
                 // auth 
                 ['auth',                    ['POST'],       'wrat_password_auth'],
 
@@ -345,13 +340,11 @@ if (!class_exists("\WRAT\WRAT")) {
                 ['auth/facebook',           ['POST'],        'wrat_auth_facebook'],
                 ['auth/google',             ['POST'],        'wrat_auth_google'],
 
-                ['verify',                  ['GET'],        'verifyWRAT'],
+                ['verify',                  ['GET', 'POST'],        'verifyWRAT'],
                 ['refresh',                 ['GET', 'POST'],        'refreshWRAT'],
                 ['logout',                  ['GET', 'POST'],        'wrat_logout'],
-                ['register',                ['POST'],       'wrat_register'],
                 ['password/forgot',         ['POST'],        'wrat_sendPasswordResetEmail'],
                 ['password/change',         ['POST'],        'wrat_changePassword'],
-
 
                 // development 
                 ['auth/test',               ['GET', 'POST'],        'auth_test'],
@@ -405,24 +398,26 @@ if (!class_exists("\WRAT\WRAT")) {
 
         function refreshWRAT()
         {
+            $user = $this->wrat_getUser();
+            if ($user) {
+                $user->token = $this->updateWRAT();
+                return new WP_REST_Response($this->success(false, $user));
+            }
+            return new WP_REST_Response($this->error('invalid_wrat'));
         }
 
-        function wrat_logout($request)
+        function wrat_logout()
         {
-            $id = get_current_user_id();
-            if ($id)
-                update_user_meta($id, '_wat_token', '');
+            $this->deleteWRAT();
             wp_logout();
-            $this->success('LOGGED_OUT');
+            return new WP_REST_Response($this->success('LOGGED_OUT'));
         }
 
         function wrat_register($request)
         {
 
             $register_allow = get_option('users_can_register');
-            if (!$register_allow) {
-                $this->error('not_allowed');
-            }
+            if (!$register_allow) return new WP_REST_Response($this->error('not_allowed'));
 
             # before wat registration hook 
             do_action('wrat_before_registration', $request);
@@ -431,56 +426,50 @@ if (!class_exists("\WRAT\WRAT")) {
             $password = $request['password'] ?? null;
             $email = $request['email'] ?? null;
 
-            if (!$email) {
-                $this->error('invalid_email');
-            }
-
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                $this->error('invalid_email');
+            if (!$email || !is_email($email)) {
+                return new WP_REST_Response($this->error('invalid_email'));
             }
 
             $user_id = $this->wrat_createUser($email, $password, $username);
             if (!$user_id) {
-                $this->error('existing_user_email');
+                return new WP_REST_Response($this->error('existing_user_email'));
             }
 
             # before wat registration hook 
-            do_action('wrat_after_registration', $user_id);
+            do_action('wrat_after_registration', $user_id, $request);
 
-            add_user_meta($user_id, '_wat_passwordless', false);
+            add_user_meta($user_id, '_wrat_passwordless', false);
 
             update_user_meta($user_id, 'first_name', $request['first_name'] ?? '');
             update_user_meta($user_id, 'last_name', $request['last_name'] ?? '');
 
             $user = $this->wrat_loginUser(get_user_by('id', $user_id));
-            $this->success($user);
+            return new WP_REST_Response($this->success('registration_success', $user));
         }
 
         function wrat_sendPasswordResetEmail($request)
         {
             $email = $request['email'] ?? false;
             $username = $request['username'] ?? false;
-            if (!$email && !$username) {
-                $this->error('empty_username');
-            }
+            if (!$email && !$username) return new WP_REST_Response($this->error('empty_username'));
 
             $usisUserer = NULL;
-            if ($email) {
+            if ($email && is_email($email)) {
                 $isUser = get_user_by('email', $email);
-            } else {
+            } else if ($username) {
                 $isUser = get_user_by('login', $username);
+            } else {
+                // do nothing 
             }
 
-            if (!$isUser) {
-                $this->error('user_does_not_exist');
-            }
+            if (!$isUser) return new WP_REST_Response($this->error('user_does_not_exist'));
 
             $user = new \WP_User(intval($isUser->ID));
             $reset_key = get_password_reset_key($user);
             $wc_emails = WC()->mailer()->get_emails();
             $sent = $wc_emails['WC_Email_Customer_Reset_Password']->trigger($user->user_login, $reset_key);
 
-            $this->success('reset_email_sent');
+            return new WP_REST_Response($this->success('reset_email_sent'));
         }
 
         function wrat_changePassword($request)
@@ -489,7 +478,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $user = $this->wrat_getUser();
 
             // check if the user is passwordless user 
-            $passwordless = get_user_meta($user->id, '_wat_passwordless', true);
+            $passwordless = get_user_meta($user->id, '_wrat_passwordless', true);
 
             if (!$passwordless) {
                 $userIntance = get_user_by_email($user->email);
@@ -497,27 +486,20 @@ if (!class_exists("\WRAT\WRAT")) {
                 $old_pass = $request['old'] ?? false;
                 $force = $request['force'] ?? false;
 
-                if (!$force && !$old_pass) {
-                    $this->error('empty_old_password');
-                }
-                if (!wp_check_password($old_pass, $userIntance->data->user_pass, $user->id)) {
-                    $this->error('incorrect_old_password');
-                }
+                if (!$force && !$old_pass) return new WP_REST_Response($this->error('empty_old_password'));
+                if (!wp_check_password($old_pass, $userIntance->data->user_pass, $user->id)) return new WP_REST_Response($this->error('incorrect_old_password'));
             }
 
             $new_pass = $request['password'] ?? false;
-            if (!$new_pass) {
-                $this->error('empty_password');
-            }
+            if (!$new_pass) return new WP_REST_Response($this->error('empty_password'));
 
             wp_set_password($new_pass, $user->id);
 
             // turn off passwordless mode 
-            update_user_meta($user->id, '_wat_passwordless', false);
+            update_user_meta($user->id, '_wrat_passwordless', false);
 
-            $this->success('password_changed');
+            return new WP_REST_Response($this->success('password_changed'));
         }
-
 
         // api response 
         function wrat_curl($url = '', $data = [], $post = false)
@@ -591,7 +573,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             $this->success('facebook_linked');
                         }
                     } else {
-                        $this->error('invalid_web_auth_token');
+                        $this->error('invalid_wrat');
                     }
                     break;
 
@@ -602,7 +584,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             if ($linkedUser->ID == get_current_user_id()) {
 
                                 // check accessibility
-                                $passwordless = get_user_meta(get_current_user_id(), '_wat_passwordless', true);
+                                $passwordless = get_user_meta(get_current_user_id(), '_wrat_passwordless', true);
                                 $googleConnected = get_user_meta(get_current_user_id(), '_wrat_google', true);
                                 if ($passwordless && !$googleConnected) $this->error('You can not disconnect Facebook. Either connect Google or set Password first.');
 
@@ -615,7 +597,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             $this->error('not_linked');
                         }
                     } else {
-                        $this->error('invalid_web_auth_token');
+                        $this->error('invalid_wrat');
                     }
                     break;
 
@@ -642,7 +624,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
                             // register new account 
                             $user_id = $this->wrat_createUser($response->email);
-                            add_user_meta($user_id, '_wat_passwordless', true);
+                            add_user_meta($user_id, '_wrat_passwordless', true);
                             update_user_meta($user_id, 'first_name', $response->first_name);
                             update_user_meta($user_id, 'last_name', $response->last_name);
                             update_user_meta($user_id, '_wrat_facebook', $response->email);
@@ -700,7 +682,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             $this->success('google_linked');
                         }
                     } else {
-                        $this->error('invalid_web_auth_token');
+                        $this->error('invalid_wrat');
                     }
                     break;
 
@@ -710,7 +692,7 @@ if (!class_exists("\WRAT\WRAT")) {
                         if ($linkedUser) {
                             if ($linkedUser->ID == get_current_user_id()) {
                                 // check accessibility
-                                $passwordless = get_user_meta(get_current_user_id(), '_wat_passwordless', true);
+                                $passwordless = get_user_meta(get_current_user_id(), '_wrat_passwordless', true);
                                 $facebookConnected = get_user_meta(get_current_user_id(), '_wrat_facebook', true);
                                 if ($passwordless && !$facebookConnected) $this->error('You can not disconnect Google. Either connect Facebook or set Password first.');
 
@@ -723,7 +705,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             $this->error('not_linked');
                         }
                     } else {
-                        $this->error('invalid_web_auth_token');
+                        $this->error('invalid_wrat');
                     }
                     break;
 
@@ -748,7 +730,7 @@ if (!class_exists("\WRAT\WRAT")) {
                         } else {
                             // register new account 
                             $user_id = $this->wrat_createUser($response->email);
-                            add_user_meta($user_id, '_wat_passwordless', true);
+                            add_user_meta($user_id, '_wrat_passwordless', true);
                             update_user_meta($user_id, 'first_name', $response->given_name);
                             update_user_meta($user_id, 'last_name', $response->family_name);
                             update_user_meta($user_id, '_wrat_google', $response->email);
@@ -764,23 +746,13 @@ if (!class_exists("\WRAT\WRAT")) {
         }
 
         // additional    
-        function wrat_after_registration($user_id)
+        function wrat_after_registration($user_id, $request = null)
         {
             # update user meta
             add_user_meta($user_id, '_wrat_facebook', '');
             add_user_meta($user_id, '_wrat_google', '');
             add_user_meta($user_id, '_wrat_picture', '');
         }
-
-        function after_wat_loaded()
-        {
-            # if jwt installed, whitelisting wat
-            add_filter('jwt_auth_whitelist', function ($endpoints) {
-                array_push($endpoints, $this->extended . '/wp-json/wat/*');
-                return $endpoints;
-            });
-        }
-
 
         // development 
         function auth_test()
