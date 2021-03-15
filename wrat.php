@@ -26,15 +26,11 @@ if (!class_exists("\WRAT\WRAT")) {
     {
 
         # member variables
-        public $dir = '';
-        public $path = '';
         public $extended = '/';
         private $table = 'wrat_tokens';
 
         function __construct()
         {
-            $this->dir = plugin_dir_url(__FILE__);
-            $this->path = plugin_dir_path(__FILE__);
             $this->extended = str_replace('/index.php', '', $_SERVER['PHP_SELF']);
         }
 
@@ -43,7 +39,6 @@ if (!class_exists("\WRAT\WRAT")) {
         {
             # installation hooks
             register_activation_hook(__FILE__,                  [$this, 'wrat_activate_plugin']);
-            register_deactivation_hook(__FILE__,                [$this, 'wrat_deactivate_plugin']);
 
             # custom construct method       
             add_action('rest_api_init',                         [$this, 'wat_rest_init'], 0);
@@ -73,37 +68,6 @@ if (!class_exists("\WRAT\WRAT")) {
             dbDelta($sql);
         }
 
-        // deactivation 
-        public function wrat_deactivate_plugin()
-        {
-            // do nothing 
-        }
-
-
-        function getMessages($message_id = false)
-        {
-            $messages = [
-                'empty_username' => 'Empty Username',
-                'not_registered' => 'User not Registered',
-                'invalid_username' => 'Invalid Username',
-                'invalid_email' => 'Invalid Email',
-                'empty_password' => 'Empty Password',
-                'incorrect_password' => 'Incorrect Password',
-                'existing_user_email' => 'Email already registered',
-                'user_does_not_exist' => 'User doesn\'t exist',
-                'not_allowed' => 'Not Allowed',
-                'reset_email_sent' => 'Password Recovery Email Sent',
-                'user_registered' => 'User Registered Successfully',
-                'valid_web_auth_token' => 'Valid Web Auth Token',
-                'invalid_wrat' => 'Invalid Web Auth Token',
-                'logged_in' => 'Logged In',
-                'password_changed' => 'Password changed successfully',
-            ];
-
-            $FilteredMessages = apply_filters('wat_response_messages', $messages);
-
-            return (array_key_exists(strtolower($message_id), $FilteredMessages)) ? $FilteredMessages[strtolower($message_id)] : $message_id;
-        }
 
         function response($success = true, $code = false, $data = [])
         {
@@ -165,7 +129,6 @@ if (!class_exists("\WRAT\WRAT")) {
 
         function deleteWRAT($token = false)
         {
-            // delete existing token
             if (!$token) $token = $this->getWRAT();
             if ($token) {
                 global $wpdb;
@@ -206,9 +169,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
         function wrat_getUserFromObject($data)
         {
-
             if (!$data) return false;
-
             $output = new \StdClass();
             $output->id = (int) $data->data->ID;
             $output->first_name = get_user_meta($data->data->ID, 'first_name', true);
@@ -302,9 +263,8 @@ if (!class_exists("\WRAT\WRAT")) {
             $parsed_url = explode('?', $parsed_url)[0];
             $requested_url = trim(str_replace(home_url(), '', $parsed_url), '/');
             $wrat_default_endpoints = [
-                '/wp-json/wrat/password/change',
                 '/wp-json/wrat/refresh',
-                '/wp-json/wrat/auth/test',
+                '/wp-json/wrat/password/change'
             ];
 
             $wrat_endpoints = apply_filters('wrat_endpoints',  $wrat_default_endpoints);
@@ -331,23 +291,20 @@ if (!class_exists("\WRAT\WRAT")) {
 
             $routes = [
 
-                ['register',                ['POST'],       'wrat_register'],
+                ['register',                ['POST'],               'wrat_register'],
 
                 // auth 
-                ['auth',                    ['POST'],       'wrat_password_auth'],
+                ['auth',                    ['POST'],               'wrat_password_auth'],
 
                 // socials 
-                ['auth/facebook',           ['POST'],        'wrat_auth_facebook'],
-                ['auth/google',             ['POST'],        'wrat_auth_google'],
+                ['auth/facebook',           ['POST'],               'wrat_auth_facebook'],
+                ['auth/google',             ['POST'],               'wrat_auth_google'],
 
                 ['verify',                  ['GET', 'POST'],        'verifyWRAT'],
                 ['refresh',                 ['GET', 'POST'],        'refreshWRAT'],
                 ['logout',                  ['GET', 'POST'],        'wrat_logout'],
-                ['password/forgot',         ['POST'],        'wrat_sendPasswordResetEmail'],
-                ['password/change',         ['POST'],        'wrat_changePassword'],
-
-                // development 
-                ['auth/test',               ['GET', 'POST'],        'auth_test'],
+                ['password/forgot',         ['POST'],               'wrat_sendPasswordResetEmail'],
+                ['password/change',         ['POST'],               'wrat_changePassword'],
 
             ];
 
@@ -453,7 +410,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $username = $request['username'] ?? false;
             if (!$email && !$username) return new WP_REST_Response($this->error('empty_username'));
 
-            $usisUserer = NULL;
+            $isUser = NULL;
             if ($email && is_email($email)) {
                 $isUser = get_user_by('email', $email);
             } else if ($username) {
@@ -532,8 +489,8 @@ if (!class_exists("\WRAT\WRAT")) {
             $facebook_id = $request['facebook_id'] ?? false;
             $access_token = $request['access_token'] ?? false;
 
-            if (!$facebook_id) $this->error('invalid_facebook_id');
-            if (!$access_token) $this->error('invalid_access_token');
+            if (!$facebook_id) return new WP_REST_Response($this->error('invalid_facebook_id'));
+            if (!$access_token) return new WP_REST_Response($this->error('invalid_access_token'));
 
             // action 
             $action = $request['action'] ?? 'auth';
@@ -545,7 +502,7 @@ if (!class_exists("\WRAT\WRAT")) {
             $response = json_decode($fb->response);
 
             if (isset($response->error)) {
-                $this->error($response->error->message);
+                return new WP_REST_Response($this->error($response->error->message));
             }
 
             // chech the email registered yet 
@@ -564,16 +521,16 @@ if (!class_exists("\WRAT\WRAT")) {
                     if (is_user_logged_in()) {
                         if ($linkedUser) {
                             if ($linkedUser->ID == get_current_user_id()) {
-                                $this->error('already_linked');
+                                return new WP_REST_Response($this->error('already_linked'));
                             } else {
-                                $this->error('linked_to_someone_else');
+                                return new WP_REST_Response($this->error('linked_to_someone_else'));
                             }
                         } else {
                             update_user_meta(get_current_user_id(), '_wrat_facebook', $response->email);
-                            $this->success('facebook_linked');
+                            return new WP_REST_Response($this->success('facebook_linked'));
                         }
                     } else {
-                        $this->error('invalid_wrat');
+                        return new WP_REST_Response($this->error('invalid_wrat'));
                     }
                     break;
 
@@ -589,15 +546,15 @@ if (!class_exists("\WRAT\WRAT")) {
                                 if ($passwordless && !$googleConnected) $this->error('You can not disconnect Facebook. Either connect Google or set Password first.');
 
                                 update_user_meta(get_current_user_id(), '_wrat_facebook', '');
-                                $this->success('facebook_unlinked');
+                                return new WP_REST_Response($this->success('facebook_unlinked'));
                             } else {
-                                $this->error('permission_denied');
+                                return new WP_REST_Response($this->error('permission_denied'));
                             }
                         } else {
-                            $this->error('not_linked');
+                            return new WP_REST_Response($this->error('not_linked'));
                         }
                     } else {
-                        $this->error('invalid_wrat');
+                        return new WP_REST_Response($this->error('invalid_wrat'));
                     }
                     break;
 
@@ -610,7 +567,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
                         // login the user 
                         $data = $this->wrat_loginUser($linkedUser);
-                        $this->success($data);
+                        return new WP_REST_Response($this->success($data));
                     } else {
                         // user not registered 
                         // check the email registered 
@@ -619,7 +576,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
                         if (is_a($userByEmail, '\WP_User')) {
                             // not connected yet 
-                            $this->error('facebook_not_connected');
+                            return new WP_REST_Response($this->error('facebook_not_connected'));
                         } else {
 
                             // register new account 
@@ -632,7 +589,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             if (empty($picture)) update_user_meta($user_id, '_wrat_picture', $response->picture->data->url);
 
                             $data = $this->wrat_loginUser(get_user_by('id', $user_id));
-                            $this->response(true, $data, "SET_PASSWORD");
+                            return new WP_REST_Response($this->response(true, $data, "SET_PASSWORD"));
                         }
                     }
                     break;
@@ -656,7 +613,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
 
             if (isset($response->error_description) && !empty($response->error_description)) {
-                $this->error('invalid_access_token');
+                return new WP_REST_Response($this->error('invalid_access_token'));
             }
 
             // response is ok 
@@ -673,16 +630,16 @@ if (!class_exists("\WRAT\WRAT")) {
                     if (is_user_logged_in()) {
                         if ($linkedUser) {
                             if ($linkedUser->ID == get_current_user_id()) {
-                                $this->error('already_linked');
+                                return new WP_REST_Response($this->error('already_linked'));
                             } else {
-                                $this->error('linked_to_someone_else');
+                                return new WP_REST_Response($this->error('linked_to_someone_else'));
                             }
                         } else {
                             update_user_meta(get_current_user_id(), '_wrat_google', $response->email);
-                            $this->success('google_linked');
+                            return new WP_REST_Response($this->success('google_linked'));
                         }
                     } else {
-                        $this->error('invalid_wrat');
+                        return new WP_REST_Response($this->error('invalid_wrat'));
                     }
                     break;
 
@@ -697,22 +654,21 @@ if (!class_exists("\WRAT\WRAT")) {
                                 if ($passwordless && !$facebookConnected) $this->error('You can not disconnect Google. Either connect Facebook or set Password first.');
 
                                 update_user_meta(get_current_user_id(), '_wrat_google', '');
-                                $this->success('google_unlinked');
+                                return new WP_REST_Response($this->success('google_unlinked'));
                             } else {
-                                $this->error('permission_denied');
+                                return new WP_REST_Response($this->error('permission_denied'));
                             }
                         } else {
-                            $this->error('not_linked');
+                            return new WP_REST_Response($this->error('not_linked'));
                         }
                     } else {
-                        $this->error('invalid_wrat');
+                        return new WP_REST_Response($this->error('invalid_wrat'));
                     }
                     break;
 
                 default:
                     // auth account 
                     // chech the email registered yet 
-
 
                     // if user registered 
                     if ($linkedUser) {
@@ -726,7 +682,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
                         if (is_a($userByEmail, '\WP_User')) {
                             // not connected yet 
-                            $this->error('not_linked');
+                            return new WP_REST_Response($this->error('not_linked'));
                         } else {
                             // register new account 
                             $user_id = $this->wrat_createUser($response->email);
@@ -738,7 +694,7 @@ if (!class_exists("\WRAT\WRAT")) {
                             if (empty($picture)) update_user_meta($user_id, '_wrat_picture', $response->picture);
 
                             $data = $this->wrat_loginUser(get_user_by('id', $user_id));
-                            $this->response(true, $data, "SET_PASSWORD");
+                            return new WP_REST_Response($this->response(true, $data, "SET_PASSWORD"));
                         }
                     }
                     break;
@@ -752,12 +708,6 @@ if (!class_exists("\WRAT\WRAT")) {
             add_user_meta($user_id, '_wrat_facebook', '');
             add_user_meta($user_id, '_wrat_google', '');
             add_user_meta($user_id, '_wrat_picture', '');
-        }
-
-        // development 
-        function auth_test()
-        {
-            return new WP_REST_Response('Your ID is ' . get_current_user_id());
         }
     }
 
