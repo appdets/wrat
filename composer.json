@@ -1,5 +1,5 @@
 {
-  "name": "iamjafran/wrat",
+  "name": "wrat/wrat",
   "description": "Lightweight superfast SDK for implementing oAuth2 authentication system in WordPress REST API",
   "type": "sdk",
   "license": "MIT",
