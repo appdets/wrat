@@ -1,17 +1,17 @@
 <?php
-
 /**
- *
- * @package wrat
- *
- * Plugin Name: WRAT | WordPress REST Auth Token
+ * Plugin name: WRAT | WordPress REST Auth Token
+ * Descrioption: oAuth2 implementation for WordPress REST API
+ * Version: 3.0.0 (Beta)
+ * 
  * Plugin URI: https://github.com/imjafran/wrat
- * Description: oAuth2 Implementation for WordPress REST API
- * Version: 3.0.0
+ *
  * Author: Jafran Hasan
  * Author URI: https://github.com/imjafran
- * License: GPLv3 or latter
- * Text Domain: wrat
+ * 
+ * License: MIT
+ * 
+ * Learn more about this SDK ./README.md
  */
 
 namespace WRAT;
@@ -25,52 +25,23 @@ if (!class_exists("\WRAT\WRAT")) {
     // core wrat class 
 
     final class WRAT
-    {
- 
-        public $extended = '/'; 
-
+    { 
         # init wrat
         function init()
-        {
-            $this->extended = str_replace('/index.php', '', $_SERVER['PHP_SELF']);
-
-            $this->register_hooks();
+        { 
+            add_action('rest_api_init', [$this, 'init_oauth2'], 0);
+            add_action('rest_api_init', [$this, 'apply_cors'], 0);
+            add_action('rest_api_init', [$this, 'register_rests'] );
         }
-
-         
-        # register hooks 
-        function register_hooks()
-        {  
-            # custom construct method        
-            add_action('rest_api_init',                         [$this, 'wrat_rest_init'], 0);
-            add_action('rest_api_init',                         [$this, 'register_wrat_rests'], 0);
-        }
-
-        # get inputs from request
-        function inputs()
-        {            
-            try {
-                $json = file_get_contents('php://input');
-                $request = json_decode(sanitize_text_field($json));
-            } catch(\Exception $e) {
-                
-            }
-
-            if(!$request || empty($request)) {
-                $request =  $_REQUEST;
-            }  
-
-            return (object) $request;
-        }
-        
+ 
         # create token
-        function create_wrat_token($length = 12)
+        function create_token($length = 12)
         {
             return 'wrat.' . time() . '.' . bin2hex( random_bytes( $length ) );
         }
 
         # get wrat from header || request
-        function get_wrat_request()
+        function get_wrat()
         {
             $token = false;
             $headers = $_SERVER["HTTP_AUTHORIZATION"] ?? false;
@@ -112,7 +83,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
             # create new token
             if(!$token || empty($token) || $force === true) {
-                $token = $this->create_wrat_token();
+                $token = $this->create_token();
                 update_user_meta( $user_id, 'wrat_token', $token );
             }
 
@@ -124,7 +95,7 @@ if (!class_exists("\WRAT\WRAT")) {
 
         function get_user_by_wrat($token = null)
         {
-            if(!$token) $token = $this->get_wrat_request();
+            if(!$token) $token = $this->get_wrat();
             if(!$token) return false;
  
             global $wpdb;
@@ -164,8 +135,8 @@ if (!class_exists("\WRAT\WRAT")) {
             return apply_filters( 'wrat_user_data', $data );
         }
 
-        # verify authentication
-        function wrat_rest_init()
+        # init oauthentication2
+        function init_oauth2()
         { 
 
             $user_id = get_current_user_id();
@@ -173,46 +144,62 @@ if (!class_exists("\WRAT\WRAT")) {
             if(!$user_id) $user_id = $this->get_user_by_wrat();
 
             if($user_id && $user_id > 0) { 
+                # authenticated
                 wp_set_current_user($user_id);
-            }
 
-            # check route resctriction
-            if ($this->is_route_resctricted() && !is_user_logged_in()) {
-                wp_send_json($this->error('invalid_wrat'));
-                wp_die();
-            }
+            } else {
+
+                # check wrat mode, if routes are whitelisted by default
+                $blacklist_endpoints= apply_filters( 'wrat_blacklist_endpoints', true );
+    
+                # check route resctriction
+                $endpoint_matched = $this->endpoint_matched();
+ 
+                if ($blacklist_endpoints && $endpoint_matched || !$blacklist_endpoints && !$endpoint_matched) {
+                    wp_send_json([
+                        'success' => false, 
+                        'message' => 'invalid_wrat'
+                    ]);
+                    wp_die();
+                }
+
+            } 
+           
         }
 
-        # check whether the route is restricted for logged-in users
-        function is_route_resctricted()
+        # check whether the route is matched to registered endpoints
+        function endpoint_matched()
         {
 
-            $parsed_url = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
+            $parsed_url = $_SERVER['REQUEST_URI'] ?? '/';
             $parsed_url = explode('?', $parsed_url)[0];
-            $requested_url = trim(str_replace(home_url(), '', $parsed_url), '/');            
+            $requested_url = trim($parsed_url, '/');            
 
-            $wrat_endpoints = apply_filters('wrat_endpoints',  []);
-           
-            $restricted = false;
+            $wrat_endpoints = apply_filters('wrat_endpoints', []);
+
+            $wrat_prefix = apply_filters( 'wrat_endpoint_prefix', '' );
             
             if(!empty($wrat_endpoints)){
                 foreach ($wrat_endpoints as $wrat_endpoint) {
-                    $wrat_endpoint = trim($wrat_endpoint, '/');
+                    
+                    # building requested uri
+                    $wrat_endpoint = $wrat_prefix . 'wp-json/' . trim($wrat_endpoint, '/');
+
+                    # making ready for regular expression matching
                     $wrat_endpoint = str_replace(['*'], ['.+'], $wrat_endpoint);
+
                     preg_match('~^' . $wrat_endpoint . '+$~', $requested_url, $match);
-                    if ($match[0]) {
-                        $restricted = $match[0];
-                        break;
-                    }
+ 
+                    if ($match[0]) return $match[0]; 
                 }
             } 
 
-            return $restricted;
+            return false;
         }
 
 
         # Registering Endpoints
-        function register_wrat_rests($server)
+        function register_rests($server)
         {
 
             $routes = [ 
@@ -298,6 +285,19 @@ if (!class_exists("\WRAT\WRAT")) {
                 'success' => false,
                 'code' => 'invalid_wrat'
             ]);
+        }
+
+
+        # enable cors 
+        public function apply_cors()
+        {
+            $urls = apply_filters( 'wrat_cors', '*' );
+
+            header('Access-Control-Allow-Origin: ' . $urls);
+            header('Access-Control-Allow-Methods: ' . $urls);
+            header("Access-Control-Allow-Credentials: true");
+            header('Content-Type: ' . $urls);
+            header('Access-Control-Allow-Headers: Origin, Authorization, Content-Type, x-xsrf-token, x_csrftoken, Cache-Control, X-Requested-With');
         }
     }
 
