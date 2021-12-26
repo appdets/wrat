@@ -67,7 +67,7 @@ Lightweight superfast SDK for implementing oAuth2 authentication system in WordP
 ### Using composer
 - [x] Open your bash/terminal and run the command
 ```bash
-composer require wrat
+composer require wrat/wrat
 ```
  
 ### Manual installation
