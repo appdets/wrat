@@ -8,5 +8,6 @@
       "name": "Jafran Hasan",
       "email": "exjafran@gmail.com"
     }
-  ]
+  ],
+  "minimum-stability": "stable"
 }
