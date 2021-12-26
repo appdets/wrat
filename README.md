@@ -71,7 +71,7 @@ composer require wrat/wrat
 ```
  
 ### Manual installation
-- [x] [Download as zip](https://github.com/imjafran/wrat/releases/tag/v3.0)
+- [x] [Download as zip](https://github.com/imjafran/wrat/archive/refs/heads/master.zip)
 - [x] Extract into your project directory
 - [x] Require `wrat.php` file
  
