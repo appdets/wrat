@@ -233,21 +233,21 @@ if (!class_exists("WRAT")) {
             do_action('wrat_before_auth'); 
 
             # request inputs
-            $email = $input->email ?? null;
-            $username = $input->username ?? null;
-            $password = $input->password ?? null;
+            $email = sanitize_text_field( $input->email ?? '' );
+            $username = sanitize_text_field( $input->username ?? '' );
+            $password = sanitize_text_field( $input->password ?? '' );
 
             # No email
-            if(!$email){
+            if( empty($email) ){
                 return new WP_REST_Response(['success' => false, 'code' => 'invalid_email']);
             }
             # No username or email
-            if(!$email && !$username){
+            if(empty($email) && empty($username)){
                 return new WP_REST_Response(['success' => false, 'code' => 'invalid_username']);
             }
 
             # No password
-            if(!$password){
+            if( empty($password) ){
                 return new WP_REST_Response(['success' => false, 'code' => 'incorrect_password']);
             }
 
