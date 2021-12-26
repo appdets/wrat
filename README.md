@@ -1,8 +1,7 @@
 # WRAT 3.0
 
 Lightweight superfast SDK for implementing oAuth2 authentication system in WordPress REST API. `(Less than 10 kb)`. 
-
-**WRAT** in the abbreviation of **W**ordPress **R**EST **A**uth **T**oken. In simple words, WRAT is an oAuth2 implementation **SDK** for WordPress REST API. 
+**W**ordPress **R**EST **A**uth **T**oken.
 
 
 <br>
