@@ -1,33 +1,42 @@
 <?php
 /**
- * Plugin name: WRAT | WordPress REST Auth Token
- * Descrioption: oAuth2 implementation for WordPress REST API
- * Version: 3.0.0 (Beta)
+ * WRAT | WordPress REST Auth Token
+ * oAuth2 implementation for WordPress REST API
+ * 3.0.0 (Beta)
  * 
- * Plugin URI: https://github.com/imjafran/wrat
+ * https://github.com/imjafran/wrat
  *
- * Author: Jafran Hasan
- * Author URI: https://github.com/imjafran
+ * Jafran Hasan
+ * https://github.com/imjafran
  * 
- * License: MIT
+ * License MIT
  * 
  * Learn more about this SDK ./README.md
  */
-
-namespace WRAT;
-
-use \WP_REST_Response;
-
+  
 defined('ABSPATH') or die('Direct Script not Allowed');
 
-if (!class_exists("\WRAT\WRAT")) {
+if (!class_exists("WRAT")) {
 
     // core wrat class 
 
     final class WRAT
     { 
+
+        public static $instance = null;
+
+        public static function init()
+        {
+            if(!self::$instance) {
+                $instance = new self;
+                
+                $instance->register_hooks();
+                self::$instance = $instance;
+            } 
+        }
+
         # init wrat
-        function init()
+        function register_hooks()
         { 
             add_action('rest_api_init', [$this, 'init_oauth2'], 0);
             add_action('rest_api_init', [$this, 'apply_cors'], 0);
@@ -299,19 +308,14 @@ if (!class_exists("\WRAT\WRAT")) {
             header('Content-Type: ' . $urls);
             header('Access-Control-Allow-Headers: Origin, Authorization, Content-Type, x-xsrf-token, x_csrftoken, Cache-Control, X-Requested-With');
         }
-    }
-
-    # init wrat class
-    $_wrat = new WRAT();
-    $_wrat->init();
- 
-
+    }  
+    
     # user defined functions
 
     # get user wrat
     if( !function_exists('wrat_get_token') ){       
         function wrat_get_token($user_id = null){
-            $_wrat = new \WRAT\WRAT();
+            $_wrat = new WRAT();
             return $_wrat->get_user_token($user_id);
         }
     }
@@ -319,11 +323,13 @@ if (!class_exists("\WRAT\WRAT")) {
     # get user
     if( !function_exists('wrat_get_user') ){       
         function wrat_get_user($user_id = null){
-            $_wrat = new \WRAT\WRAT();
+            $_wrat = new WRAT();
             return $_wrat->get_user($user_id);
         }
     }
 
 }
 
-
+/**
+ * Thanks for using WRAT
+ */
