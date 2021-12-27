@@ -43,6 +43,9 @@ Lightweight superfast SDK for implementing oAuth2 authentication system in WordP
       - [`wrat_blacklist_endpoints`](#wrat_blacklist_endpoints)
       - [`wrat_endpoint_prefix`](#wrat_endpoint_prefix)
       - [`wrat_user_data`](#wrat_user_data)
+  - [Functions](#functions)
+      - [`wrat_get_token`](#wrat_get_token)
+      - [`wrat_get_user`](#wrat_get_user)
 - [Contribution](#contribution)
 
 
@@ -402,6 +405,35 @@ function wrat_user_data_callback( $data ){
     return $data;
 }
 add_filter('wrat_user_data', 'wrat_user_data_callback');
+```
+
+## Functions
+
+#### `wrat_get_token`
+
+Returns user's access token from user id
+Example
+
+```php
+$token = wrat_get_token(int $user_id);
+
+# returns string token
+```
+
+
+#### `wrat_get_user`
+Returns user data including access token from user id
+
+Example
+
+```php
+$user = wrat_get_user(int $user_id || WP_User $user);
+
+// or 
+
+$user = wrat_get_user(WP_User $user);
+
+# returns object data
 ```
 
 
