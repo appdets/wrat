@@ -32,7 +32,7 @@ Lightweight superfast SDK for implementing oAuth2 authentication system in WordP
     - [Bearer Token](#bearer-token)
     - [URL Query Parameter](#url-query-parameter)
       - [Request Payload](#request-payload-2)
-- [Extending](#extending)
+- [Extending WRAT](#extending-wrat)
   - [Action hooks](#action-hooks)
       - [`wrat_before_auth`](#wrat_before_auth)
       - [`wrat_after_auth`](#wrat_after_auth)
@@ -242,10 +242,11 @@ ___
 <br>
 <br>
 
-# Extending
+# Extending WRAT
 
 - [Action hooks](#action_hooks)
 - [Filter hooks](#filter_hooks)
+- [Functions](#functions)
 
 ## Action hooks
 
