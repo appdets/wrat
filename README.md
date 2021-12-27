@@ -82,12 +82,12 @@ composer require wrat/wrat
 ### Initializing WRAT
 ```php
 <?php
-// require using composer
+# require using composer
 require __DIR__ . "/vendor/autoload.php";
-// or require directly
+# or require directly
 require_once __DIR__ . "/path/to/wrat.php";
 
-// Initializing WRAT
+# Initializing WRAT
 WRAT::init();
 ```
 
@@ -427,9 +427,9 @@ Returns user data including access token from user id
 Example
 
 ```php
-$user = wrat_get_user(int $user_id || WP_User $user);
+$user = wrat_get_user(int $user_id);
 
-// or 
+# or 
 
 $user = wrat_get_user(WP_User $user);
 
