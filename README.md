@@ -54,7 +54,8 @@ Lightweight superfast SDK for implementing oAuth2 authentication system in WordP
 # Features
 - [x] Opensource
 - [x] Forever free
-- [x] Lightweight (3kb)
+- [x] Lightweight (Less than 10kb)
+- [x] Single File
 - [x] Superfast, no overloading
 - [x] No dependency
 - [x] Supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
