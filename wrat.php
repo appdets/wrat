@@ -212,7 +212,7 @@ if (!class_exists("WRAT")) {
         {
 
             $routes = [ 
-                ['auth', ['POST'], 'rest_authenticate_user'], 
+                ['token', ['POST'], 'rest_authenticate_user'], 
                 ['verify', ['GET', 'POST'], 'rest_verify_token'],
             ];
 
